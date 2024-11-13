@@ -180,6 +180,14 @@
             margin-bottom: 20px;
         }
 
+        
+        .action-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .actions {
             text-align: center;
             display: flex;
@@ -193,6 +201,47 @@
         .actions > td {
             display: flex;
             justify-content: space-between;
+        }
+
+        .search-bar-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #2d2d2d;
+            padding: 10px;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 50vw;
+            margin: 0 auto 20px auto;
+        }
+
+        .search-input {
+            width: 80%;
+            padding: 8px 12px;
+            background-color: #1e1e1e;
+            border: 1px solid #444;
+            color: #c9d1d9;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .search-button {
+            background-color: #1e1e1e;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            margin-left: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .search-button:hover {
+            background-color: #141414;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #58a6ff;
         }
     </style>
 </head>
@@ -209,7 +258,15 @@
 </section>
 <section id="mails">
     <h2>Mails</h2>
-    <div id="delete-all-button" onclick="deleteAllMails()">Purge all mails</div>
+    <div class="action-bar">
+        <div id="delete-all-button" onclick="deleteAllMails()">Purge all mails</div>
+        <form onsubmit="return false;" style="width: 100%; display: block;">
+            <div id="search-bar" class="search-bar-container">
+                <input type="text" id="search-input" class="search-input" placeholder="Search mails...">
+                <button id="search-button" class="search-button" type="submit" onclick="searchEmails()">🔍</button>
+            </div>
+        </form>
+    </div>
     <table>
         <thead>
         <tr>
@@ -245,6 +302,7 @@
     const apiBaseUrl = document.location.origin;
     let limit = 10;
     let offset = 0;
+    let search_offset = 0;
 
     // fetch AND display stats
     function fetchStats() {
@@ -417,89 +475,93 @@
         return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
+    
+    function buildMailsTableFromData(data) {
+        const tbody = document.getElementById('mail-table-body');
+        tbody.innerHTML = '';
+        data.forEach((mail) => {
+            const tr = document.createElement('tr');
+
+            const tdTo = document.createElement('td');
+            tdTo.textContent = mail.to.join(', ');
+            tr.appendChild(tdTo);
+
+            const tdFrom = document.createElement('td');
+            tdFrom.textContent = mail.from.join(', ');
+            tr.appendChild(tdFrom);
+
+            const tdBody = document.createElement('td');
+
+            let bodyText;
+
+            if (!mail.subject) {
+                if (isHTML(mail.body)) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(mail.body, 'text/html');
+
+                    // remove all <style> elements from the document
+                    const styleElements = doc.getElementsByTagName('style');
+                    for (let i = styleElements.length - 1; i >= 0; i--) {
+                        styleElements[i].parentNode.removeChild(styleElements[i]);
+                    }
+
+                    // get the content of the <body> if present, otherwise get the content of the <html>
+                    bodyText = doc.body ? doc.body.textContent : doc.documentElement.textContent || "";
+                } else {
+                    // no html detected
+                    bodyText = mail.body;
+                }
+            } else {
+                bodyText = mail.subject;
+            }
+
+
+            bodyText = bodyText.replace(/\n/g, ' ').trim();
+
+            // limit the text to 50 characters
+            if (bodyText.length > 50) {
+                bodyText = bodyText.substring(0, 47) + '...';
+            }
+
+            tdBody.textContent = bodyText;
+            tr.appendChild(tdBody);
+
+            const tdDate = document.createElement('td');
+            const date = new Date(mail.timestamp);
+            tdDate.textContent = date.toLocaleString();
+            tr.appendChild(tdDate);
+
+            const tdActions = document.createElement('td');
+
+            const previewBtn = document.createElement('button');
+            previewBtn.classList.add('button');
+            previewBtn.innerHTML = '👁'; // Eye icon
+            previewBtn.addEventListener('click', () => {
+                window.open(`${apiBaseUrl}/preview/${encodeURIComponent(mail.id)}?k=${apiKey}`, '_blank');
+            });
+            tdActions.appendChild(previewBtn);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.classList.add('button');
+            deleteBtn.innerHTML = '🗑';
+            deleteBtn.addEventListener('click', () => {
+                deleteMail(mail.id);
+            });
+            tdActions.appendChild(deleteBtn);
+            tdActions.classList.add('actions');
+
+            tr.appendChild(tdActions);
+
+            tbody.appendChild(tr);
+        });
+    }
+
+
     // fetch AND display mails
     function fetchMails() {
         fetch(`${apiBaseUrl}/mails?limit=${limit}&offset=${offset}&k=${apiKey}`)
             .then(response => response.json())
-            .then(data => {
-                const tbody = document.getElementById('mail-table-body');
-                tbody.innerHTML = '';
-                data.forEach((mail) => {
-                    const tr = document.createElement('tr');
-
-                    const tdTo = document.createElement('td');
-                    tdTo.textContent = mail.to.join(', ');
-                    tr.appendChild(tdTo);
-
-                    const tdFrom = document.createElement('td');
-                    tdFrom.textContent = mail.from.join(', ');
-                    tr.appendChild(tdFrom);
-
-                    const tdBody = document.createElement('td');
-
-                    let bodyText;
-
-                    if (!mail.subject) {
-                        if (isHTML(mail.body)) {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(mail.body, 'text/html');
-
-                            // remove all <style> elements from the document
-                            const styleElements = doc.getElementsByTagName('style');
-                            for (let i = styleElements.length - 1; i >= 0; i--) {
-                                styleElements[i].parentNode.removeChild(styleElements[i]);
-                            }
-
-                            // get the content of the <body> if present, otherwise get the content of the <html>
-                            bodyText = doc.body ? doc.body.textContent : doc.documentElement.textContent || "";
-                        } else {
-                            // no html detected
-                            bodyText = mail.body;
-                        }
-                    } else {
-                        bodyText = mail.subject;
-                    }
-
-
-                    bodyText = bodyText.replace(/\n/g, ' ').trim();
-
-                    // limit the text to 50 characters
-                    if (bodyText.length > 50) {
-                        bodyText = bodyText.substring(0, 47) + '...';
-                    }
-
-                    tdBody.textContent = bodyText;
-                    tr.appendChild(tdBody);
-
-                    const tdDate = document.createElement('td');
-                    const date = new Date(mail.timestamp);
-                    tdDate.textContent = date.toLocaleString();
-                    tr.appendChild(tdDate);
-
-                    const tdActions = document.createElement('td');
-
-                    const previewBtn = document.createElement('button');
-                    previewBtn.classList.add('button');
-                    previewBtn.innerHTML = '👁'; // Eye icon
-                    previewBtn.addEventListener('click', () => {
-                        window.open(`${apiBaseUrl}/preview/${encodeURIComponent(mail.id)}?k=${apiKey}`, '_blank');
-                    });
-                    tdActions.appendChild(previewBtn);
-
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.classList.add('button');
-                    deleteBtn.innerHTML = '🗑';
-                    deleteBtn.addEventListener('click', () => {
-                        deleteMail(mail.id);
-                    });
-                    tdActions.appendChild(deleteBtn);
-                    tdActions.classList.add('actions');
-
-                    tr.appendChild(tdActions);
-
-                    tbody.appendChild(tr);
-                });
-            })
+            .then(data => buildMailsTableFromData(data))
             .catch(error => console.error('Error fetching mails:', error));
     }
 
@@ -535,6 +597,22 @@
             .catch(error => console.error('Error deleting all mails:', error));
 
         document.location.reload();
+    }
+
+    function searchEmails() {
+        var searchInput = document.getElementById('search-input').value;
+        // Fonction de recherche des mails sur l'API
+        const searchQuery = searchInput;  // Récupère la valeur de recherche
+
+        console.log(searchQuery);
+
+        const url = `${apiBaseUrl}/mails?limit=${limit}&offset=${offset}&search=${encodeURIComponent(searchQuery)}&search_offset=${search_offset}&k=${apiKey}`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => buildMailsTableFromData(data))
+            .catch(error => console.error('Error fetching mails:', error));
+
     }
 
     function isHTML(str) {

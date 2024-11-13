@@ -347,6 +347,15 @@ async fn get_mails_handler(
         .unwrap_or(&String::from("0"))
         .parse::<usize>()
         .unwrap();
+    let search_offset = request
+        .query
+        .get("search_offset")
+        .unwrap_or(&String::from("0"))
+        .parse::<usize>()
+        .unwrap();
+
+    let search = request.query.get("search").unwrap_or(&String::new()).to_lowercase();
+
 
     let db = db.lock().await;
     let mut iter = db.iter().rev();
@@ -358,12 +367,29 @@ async fn get_mails_handler(
             break;
         }
     }
+    
+    let mut search_skipped = 0;
 
     while let Some(result) = iter.next() {
         let (_, data) = result?;
         let mail: Mail = bincode::deserialize(&data)?;
-        mails.push(mail);
-        count += 1;
+
+        if search.is_empty()
+            || mail.to.iter().any(|to| to.to_lowercase().contains(&search))
+            || mail.from.iter().any(|from| from.to_lowercase().contains(&search))
+            || mail.subject.clone().expect("subject").to_lowercase().contains(&search)
+            || mail.data.to_lowercase().contains(&search)
+        {
+            // Si search_offset est activé, on saute les résultats avant le search_offset
+            if search_skipped < search_offset {
+                search_skipped += 1;
+                continue;
+            }
+
+            mails.push(mail);
+            count += 1;
+        }
+
         if count >= limit {
             break;
         }
